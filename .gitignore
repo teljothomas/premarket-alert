@@ -1,0 +1,36 @@
+# Byte-compiled files and caches
+__pycache__/
+*.py[cod]
+*.pyc
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Editors and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+
+# NSE session cookies some nsepython modes write to the working directory
+cookies.txt
+
+# Written by the workflow's keep-alive step (committed there with `git add -f`)
+last_run.txt

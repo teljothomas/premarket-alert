@@ -1,0 +1,70 @@
+name: Pre-Market Alert
+
+on:
+  schedule:
+    # 03:15 UTC = 08:45 IST (UTC+5:30), Monday-Friday.
+    # GitHub can start scheduled runs several minutes late when it is busy.
+    - cron: "15 3 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Log the WhatsApp message instead of sending it"
+        type: boolean
+        default: false
+      force_run:
+        description: "Run even on a weekend (for testing)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write # needed to push the keep-alive commit
+
+concurrency:
+  group: premarket
+  cancel-in-progress: false
+
+jobs:
+  premarket-alert:
+    name: Pre-market check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run pre-market alert
+        env:
+          UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}
+          CALLMEBOT_API_KEY: ${{ secrets.CALLMEBOT_API_KEY }}
+          CALLMEBOT_PHONE: ${{ secrets.CALLMEBOT_PHONE }}
+          PORTFOLIO_STOCKS: ${{ vars.PORTFOLIO_STOCKS }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+          FORCE_RUN: ${{ inputs.force_run && '1' || '' }}
+        run: python -m src.main
+
+      # Scheduled workflows are disabled after 60 days without repository
+      # activity. Committing a timestamp every run prevents that. This step
+      # runs even if the alert step failed.
+      - name: Keep-alive commit
+        if: ${{ !cancelled() }}
+        run: |
+          date -u +"%Y-%m-%dT%H:%M:%SZ" > last_run.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # -f: last_run.txt is listed in .gitignore so local runs never commit it
+          git add -f last_run.txt
+          git diff --staged --quiet || {
+            git commit -m "chore: keep-alive $(cat last_run.txt) [skip ci]"
+            git push || { git pull --rebase && git push; }
+          }
