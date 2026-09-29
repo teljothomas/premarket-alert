@@ -27,6 +27,7 @@ DEFAULT_PORTFOLIO_STOCKS: str = "RELIANCE,TCS,HDFCBANK,INFY"
 DEFAULT_GIFT_NIFTY_INSTRUMENT_KEY: str = "GLOBAL_INDEX|SGX NIFTY"
 UPSTOX_LTP_URL: str = "https://api.upstox.com/v2/market-quote/ltp"
 UPSTOX_QUOTE_URL: str = "https://api.upstox.com/v2/market-quote/quotes"
+UPSTOX_BATCH_SIZE: int = 500  # max instrument_keys per market-quote request
 YAHOO_CHART_URL: str = "https://{host}/v8/finance/chart/{ticker}"
 YAHOO_HOSTS: tuple[str, ...] = ("query1.finance.yahoo.com", "query2.finance.yahoo.com")  # retried in order
 YAHOO_GIFT_PROXY_TICKER: str = "^NSEI"  # Nifty 50 spot

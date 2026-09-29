@@ -16,8 +16,9 @@ Every weekday at 08:45 IST a GitHub Actions workflow checks the signals that usu
         │                        └─ fallback: Yahoo Finance ^NSEI (Nifty 50 spot proxy)
         ├─► fetch_vix ───────── nsepython.indiavix()  +  nselib india_vix_data('1W')
         ├─► fetch_fii_dii ───── nselib fii_dii_trading_activity()
-        └─► fetch_stocks ────── nsepython.nse_eq(symbol), 0.5 s apart
-                                 └─ fallback: Yahoo Finance SYMBOL.NS
+        └─► fetch_stocks ────── Upstox market-quote API (batched, symbols in src/nse_instruments.py)
+                                 └─ fallback: nsepython.nse_eq(symbol), 0.5 s apart
+                                    └─ fallback: Yahoo Finance SYMBOL.NS
         │
         ▼   (a failed source returns None and is skipped, never fatal)
   evaluate_alert ──► GREEN | YELLOW | RED  + reasons
@@ -192,7 +193,8 @@ To change the schedule, edit the `cron` line in `.github/workflows/premarket.yml
 | Workflow disabled after 60 days | GitHub disables schedules in repositories with no activity. The keep-alive step commits `last_run.txt` on every run to prevent this. If it was disabled anyway, open **Actions → Pre-Market Alert → Enable workflow**. |
 | Keep-alive step fails with 403 | The workflow token can't push. See setup step 6. |
 | India VIX / FII/DII / stock data "unavailable" | NSE often blocks cloud IP ranges, including GitHub's runners, and sometimes changes its API. The run continues with whatever data it got. Stocks fall back to Yahoo Finance. Missing sources are listed in the log. |
-| `Yahoo Finance … 429 Too Many Requests` | Yahoo rate limit. The script retries on a second Yahoo host. Occasional misses are harmless; if it happens often, shorten `PORTFOLIO_STOCKS`. |
+| `Yahoo Finance … 429 Too Many Requests` | Yahoo blocks GitHub's runner IPs on most requests, not just bursts, so this fires often for stocks/GIFT Nifty on Actions (it's usually fine when run locally). It only matters if `UPSTOX_ANALYTICS_TOKEN` isn't set — with it, GIFT Nifty and any symbol in `src/nse_instruments.py` skip Yahoo entirely. |
+| `No Upstox instrument key for SYMBOL` | The symbol isn't in `src/nse_instruments.py`, so it falls back to nsepython/Yahoo (likely blocked on Actions; see above). Add it: download `https://assets.upstox.com/market-quote/instruments/exchange/NSE.csv.gz`, find the row where `instrument_type` is `EQUITY` and `tradingsymbol` matches, and add its `instrument_key` to the dict. |
 | Alert arrives after 09:15 | GitHub can start scheduled runs 5–30 min late under load. Move the cron earlier, e.g. `"0 3 * * 1-5"` (08:30 IST). |
 | `Fatal configuration error` and exit code 1 | `CALLMEBOT_API_KEY` or `CALLMEBOT_PHONE` is missing. Add the secrets, or run with `DRY_RUN=1`. |
 | Received "PRE-MARKET CHECK INCOMPLETE" | GIFT Nifty couldn't be fetched from any source and nothing else fired, so the day couldn't be graded. Check the market yourself. Set `NOTIFY_ON_DATA_FAILURE = False` in `src/config.py` to turn these off. |
@@ -204,7 +206,7 @@ To change the schedule, edit the `cron` line in `.github/workflows/premarket.yml
 - **FII/DII.** NSE publishes one row per category (`FII/FPI`, `DII`) for the latest session. The script merges both into one dict: `fii_net`, `dii_net`, buy/sell values and the date.
 - **Holidays.** Only weekends are skipped. On an NSE holiday that falls on a weekday, the script runs on stale data. That is harmless, but you may get an alert.
 - **Library exports.** nselib 2.5.x defines `fii_dii_trading_activity` but doesn't export it from `nselib.capital_market`, so the script imports it from the submodule when needed.
-- **NSE quote API.** When this was written, NSE's `quote-equity` API behind `nsepython.nse_eq` answered 403 "Access Denied", so stock quotes came from the Yahoo Finance fallback. The script tries NSE first and stops calling it for the rest of a run after the first empty response.
+- **NSE quote API.** When this was written, NSE's `quote-equity` API behind `nsepython.nse_eq` answered 403 "Access Denied" from GitHub's runners, and Yahoo Finance rate-limited runner IPs (429) as well. Stock quotes now come from the Upstox market-quote API first (one batched call, for symbols in `src/nse_instruments.py`); nsepython, then Yahoo, are only tried for symbols missing from that mapping. The script stops calling nsepython for the rest of a run after its first empty response.
 - **Upstox instrument key.** `GLOBAL_INDEX|SGX NIFTY` comes from the project brief and could not be verified without a token. It is configurable (see troubleshooting). The v2 LTP endpoint returns only the last price, so the script derives the previous close from the full-quote endpoint's `net_change`.
 - **Time budget.** Each source runs under a hard time limit (GIFT 20 s, VIX 15 s, FII 10 s, stocks 30 s, send 10 s), so a run finishes in under 90 s even if NSE hangs. A local run with real data took about 12 s.
 - **Stateless.** Nothing is read from disk between runs. `last_run.txt` is written only by the workflow, for keep-alive.
@@ -213,7 +215,7 @@ To change the schedule, edit the `cron` line in `.github/workflows/premarket.yml
 
 - Added `src/utils.py` for shared parsing and timeout helpers, and an empty `tests/__init__.py` so `pytest tests/` can import `src` without extra configuration.
 - `UPSTOX_ANALYTICS_TOKEN` is optional (a warning, not a fatal error) because the Yahoo fallback exists. Only the CallMeBot variables are required, and only when not in `DRY_RUN`.
-- Stocks fall back to Yahoo Finance `SYMBOL.NS` because NSE's quote API was blocked.
+- Stocks are fetched from Upstox first (`src/nse_instruments.py` maps symbols to Upstox instrument keys, since Upstox has no symbol search); unmapped symbols fall back to nsepython, then Yahoo Finance `SYMBOL.NS`.
 - A short "check incomplete" notice is sent when the primary signal is missing from every source and nothing else fired, so a data outage is never silently reported as GREEN.
 - Extra optional inputs: `DRY_RUN`, `FORCE_RUN`, `LOG_LEVEL`, `GIFT_NIFTY_INSTRUMENT_KEY`, and matching workflow_dispatch checkboxes.
 - `last_run.txt` stays in `.gitignore` as specified, so the workflow commits it with `git add -f`.

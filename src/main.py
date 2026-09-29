@@ -85,6 +85,7 @@ def run(settings: config.Settings) -> None:
         fetch_stocks,
         settings.portfolio_stocks,
         deadline=time.monotonic() + config.STOCKS_TIMEOUT_SECONDS - 3,
+        upstox_token=settings.upstox_token,
     )
 
     sources = {"GIFT Nifty": gift, "India VIX": vix, "FII/DII": fii, "Portfolio stocks": stocks}
